@@ -75,14 +75,11 @@ class LayoutDetector:
             from paddleocr import PaddleOCR
 
             logger.info("Initializing PaddleOCR layout detection")
+            # ✅ FIXED: Use PaddleOCR 3.x API - removed old parameters
             self._layout_model = PaddleOCR(
                 lang="en",
-                use_gpu=self.use_gpu,
-                show_log=False,
-                use_angle_cls=False,
-                det=False,  # Disable text detection, use layout only
-                rec=False,  # Disable recognition
-                layout=True,  # Enable layout analysis
+                # Removed: use_gpu, show_log, use_angle_cls
+                # These are now configured at init, not ocr() call
             )
             logger.info("PaddleOCR layout model initialized")
 
@@ -95,14 +92,18 @@ class LayoutDetector:
             from transformers import AutoModelForTokenClassification, AutoTokenizer
 
             logger.info(f"Loading LayoutLM model: {self.model_name}")
+            # ✅ ADD: Specify local cache directory
             self._reading_order_tokenizer = AutoTokenizer.from_pretrained(
-                self.model_name, trust_remote_code=True
+                self.model_name, 
+                trust_remote_code=True,
+                cache_dir="./models"  # Use cached model
             )
             self._reading_order_model = AutoModelForTokenClassification.from_pretrained(
-                self.model_name, trust_remote_code=True
+                self.model_name, 
+                trust_remote_code=True,
+                cache_dir="./models"
             )
             logger.info("LayoutLM reading order model initialized")
-
         except Exception as e:
             logger.warning(f"Failed to load LayoutLM model: {e}")
             self._reading_order_model = None
@@ -128,7 +129,7 @@ class LayoutDetector:
             if len(cv2_image.shape) == 3:
                 cv2_image = cv2_image[:, :, ::-1]  # RGB to BGR
 
-            result = self._layout_model.ocr(cv2_image, cls=False)
+            result = self._layout_model.ocr(cv2_image)
 
             regions = []
             if result:

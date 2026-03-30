@@ -298,8 +298,9 @@ class OCREngine:
             try:
                 import cv2
                 cv2_image = self._pil_to_cv2(image)
-                result = self._ocr.ocr(cv2_image, cls=True)
-
+                # ✅ REMOVE cls=True parameter (PaddleOCR 3.x doesn't support it)
+                result = self._ocr.ocr(cv2_image)  # Don't pass cls parameter
+                
                 # Flatten result if nested
                 if result and len(result) == 1 and isinstance(result[0], list):
                     result = result[0]
@@ -312,7 +313,7 @@ class OCREngine:
 
             except Exception as e:
                 logger.warning(f"PaddleOCR failed: {e}, falling back to Tesseract")
-
+        
         # Fallback to Tesseract
         regions = self._process_tesseract_result(image, image_width, image_height)
         logger.info(f"Extracted {len(regions)} text regions with Tesseract")
