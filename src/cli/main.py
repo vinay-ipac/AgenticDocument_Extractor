@@ -118,10 +118,12 @@ def process(
     click.echo(f"Output directory: {output}")
 
     try:
-        # Process document
+        # Process document with layout images saved to output dir
+        layout_dir = Path(output) / "layout_images"
         result = processor.process(
             document,
             analyze_regions=not no_analyze,
+            layout_output_dir=layout_dir,
         )
 
         # Extract with schema if specified
@@ -174,8 +176,13 @@ def process(
     default=0,
     help="Page number (0-indexed)",
 )
+@click.option(
+    "--save-layout/--no-save-layout",
+    default=True,
+    help="Save layout detection images (default: on)",
+)
 @click.pass_context
-def extract(ctx, document: str, schema: str, output: str, page: int):
+def extract(ctx, document: str, schema: str, output: str, page: int, save_layout: bool):
     """
     Extract structured data from a document using a schema.
 
@@ -196,8 +203,18 @@ def extract(ctx, document: str, schema: str, output: str, page: int):
             verbose=ctx.obj.get("verbose", False),
         )
 
+        # Determine layout output directory (sibling to output file)
+        layout_output_dir = None
+        if save_layout:
+            output_path = Path(output)
+            layout_output_dir = output_path.parent / "layout_images"
+
         # Process document first
-        result = processor.process(document, analyze_regions=False)
+        result = processor.process(
+            document,
+            analyze_regions=False,
+            layout_output_dir=layout_output_dir,
+        )
 
         if page >= result.page_count:
             click.echo(f"Error: Page {page} not found (document has {result.page_count} pages)")
@@ -221,6 +238,13 @@ def extract(ctx, document: str, schema: str, output: str, page: int):
 
         click.echo(f"\n[OK] Extraction complete!")
         click.echo(f"Output saved to: {output_path}")
+
+        if save_layout and layout_output_dir and layout_output_dir.exists():
+            layout_files = list(layout_output_dir.glob("*.png"))
+            if layout_files:
+                click.echo(f"Layout images saved to: {layout_output_dir}/")
+                for lf in layout_files:
+                    click.echo(f"  - {lf.name}")
 
         # Show summary
         if "error" not in extraction:

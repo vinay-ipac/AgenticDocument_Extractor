@@ -1,6 +1,7 @@
 """Layout Detection with Reading Order prediction."""
 
 import logging
+import os
 import uuid
 from pathlib import Path
 from typing import Optional, Union
@@ -19,13 +20,20 @@ from .dataclasses import (
 
 logger = logging.getLogger(__name__)
 
+# Disable PaddlePaddle PIR to avoid oneDNN incompatibility on Windows.
+os.environ.setdefault("FLAGS_enable_pir_api", "0")
+os.environ.setdefault("FLAGS_enable_pir_in_executor", "0")
+os.environ.setdefault("FLAGS_enable_pir_with_pt_in_dy2st", "0")
+os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 
-# Mapping from PaddleOCR layout types to our RegionType
-LAYOUT_TYPE_MAP = {
+
+# Mapping from PaddleX layout detection labels to our RegionType
+LAYOUT_LABEL_MAP = {
     "text": RegionType.TEXT,
     "title": RegionType.HEADER,
     "table": RegionType.TABLE,
     "figure": RegionType.IMAGE,
+    "image": RegionType.IMAGE,
     "figure_caption": RegionType.TEXT,
     "table_caption": RegionType.TEXT,
     "formula": RegionType.TEXT,
@@ -34,6 +42,20 @@ LAYOUT_TYPE_MAP = {
     "seal": RegionType.STAMP,
     "handwriting": RegionType.HANDWRITING,
     "form": RegionType.FORM,
+    "header": RegionType.HEADER,
+    "footer": RegionType.FOOTER,
+    "reference": RegionType.TEXT,
+    "abstract": RegionType.TEXT,
+    "content": RegionType.TEXT,
+    "list": RegionType.TEXT,
+    "doc_title": RegionType.HEADER,
+    "paragraph_title": RegionType.HEADER,
+    "paragraph": RegionType.TEXT,
+    "catalog": RegionType.TEXT,
+    "chart": RegionType.CHART,
+    "number": RegionType.TEXT,
+    "algorithm": RegionType.TEXT,
+    "code_block": RegionType.TEXT,
 }
 
 
@@ -41,26 +63,33 @@ class LayoutDetector:
     """
     Layout detection with reading order prediction.
 
-    Uses PaddleOCR for layout detection and LayoutLMv3 for reading order.
+    Uses PaddleX layout analysis model (PP-DocLayoutV3) for layout detection
+    and spatial heuristics for reading order.
     """
 
     def __init__(
         self,
-        model_name: str = "layoutlmv3-base",
+        layout_model_name: str = "PP-DocLayoutV3",
+        reading_order_model_name: str = "microsoft/layoutlmv3-base",
         use_gpu: bool = False,
-        min_region_area: float = 1000.0,
+        min_region_area: float = 500.0,
+        layout_threshold: float = 0.3,
     ):
         """
         Initialize layout detector.
 
         Args:
-            model_name: LayoutLM model name for reading order
+            layout_model_name: PaddleX layout model name
+            reading_order_model_name: HuggingFace model for reading order
             use_gpu: Whether to use GPU
             min_region_area: Minimum area for a region to be considered
+            layout_threshold: Confidence threshold for layout detection
         """
-        self.model_name = model_name
+        self.layout_model_name = layout_model_name
+        self.reading_order_model_name = reading_order_model_name
         self.use_gpu = use_gpu
         self.min_region_area = min_region_area
+        self.layout_threshold = layout_threshold
         self._layout_model = None
         self._reading_order_model = None
         self._initialized = False
@@ -70,100 +99,131 @@ class LayoutDetector:
         if self._initialized:
             return
 
-        # Initialize PaddleOCR layout detection
+        # Initialize PaddleX layout analysis model
         try:
-            from paddleocr import PaddleOCR
+            import paddlex
 
-            logger.info("Initializing PaddleOCR layout detection")
-            # ✅ FIXED: Use PaddleOCR 3.x API - removed old parameters
-            self._layout_model = PaddleOCR(
-                lang="en",
-                # Removed: use_gpu, show_log, use_angle_cls
-                # These are now configured at init, not ocr() call
-            )
-            logger.info("PaddleOCR layout model initialized")
+            logger.info(f"Initializing PaddleX layout model: {self.layout_model_name}")
+            self._layout_model = paddlex.create_model(self.layout_model_name)
+            logger.info("PaddleX layout model initialized")
 
         except Exception as e:
-            logger.warning(f"Failed to initialize layout model: {e}")
+            logger.warning(f"Failed to initialize PaddleX layout model: {e}")
             self._layout_model = None
 
-        # Try to initialize LayoutLM for reading order
+        # Try to initialize LayoutLM for reading order (optional)
         try:
-            from transformers import AutoModelForTokenClassification, AutoTokenizer
+            from transformers import AutoModel, AutoTokenizer
 
-            logger.info(f"Loading LayoutLM model: {self.model_name}")
-            # ✅ ADD: Specify local cache directory
+            logger.info(f"Loading reading order model: {self.reading_order_model_name}")
             self._reading_order_tokenizer = AutoTokenizer.from_pretrained(
-                self.model_name, 
+                self.reading_order_model_name,
                 trust_remote_code=True,
-                cache_dir="./models"  # Use cached model
             )
-            self._reading_order_model = AutoModelForTokenClassification.from_pretrained(
-                self.model_name, 
+            self._reading_order_model = AutoModel.from_pretrained(
+                self.reading_order_model_name,
                 trust_remote_code=True,
-                cache_dir="./models"
             )
-            logger.info("LayoutLM reading order model initialized")
+            logger.info("Reading order model initialized")
         except Exception as e:
-            logger.warning(f"Failed to load LayoutLM model: {e}")
+            logger.info(f"Reading order model not available ({e}), using spatial heuristics")
             self._reading_order_model = None
 
         self._initialized = True
 
-    def _detect_layout_with_paddle(self, image: Image.Image) -> list[dict]:
+    def _detect_layout_with_paddlex(
+        self, image: Image.Image, save_visualization: Optional[Union[str, Path]] = None
+    ) -> list[dict]:
         """
-        Detect layout using PaddleOCR.
+        Detect layout using PaddleX layout analysis model.
 
         Args:
             image: PIL Image
+            save_visualization: Optional path to save the PaddleX visualization
 
         Returns:
-            List of layout regions with type and bbox
+            List of layout regions with type, bbox, and score
         """
         if self._layout_model is None:
             return []
 
         try:
-            import cv2
             cv2_image = np.array(image)
-            if len(cv2_image.shape) == 3:
+            if len(cv2_image.shape) == 3 and cv2_image.shape[2] == 3:
                 cv2_image = cv2_image[:, :, ::-1]  # RGB to BGR
 
-            result = self._layout_model.ocr(cv2_image)
+            # PaddleX model.predict() returns a generator of LayoutAnalysisResult
+            raw_results = list(self._layout_model.predict(cv2_image))
+
+            # Save PaddleX visualization if requested
+            if save_visualization:
+                self._save_layout_image(raw_results, save_visualization)
 
             regions = []
-            if result:
-                # Result format: [(box, (type, score)), ...]
-                for item in result[0] if isinstance(result[0], list) else result:
-                    if len(item) >= 2:
-                        box = item[0]
-                        layout_info = item[1]
+            for result in raw_results:
+                # LayoutAnalysisResult is dict-like with "boxes" key
+                boxes = result.get("boxes", []) if hasattr(result, 'get') else result["boxes"]
 
-                        if isinstance(layout_info, tuple) and len(layout_info) >= 2:
-                            layout_type_str = layout_info[0]
-                            score = layout_info[1]
-                        else:
-                            layout_type_str = str(layout_info)
-                            score = 1.0
+                for box_info in boxes:
+                    label = box_info.get("label", "unknown").lower()
+                    coordinate = box_info.get("coordinate", [])
+                    score = box_info.get("score", 0.0)
 
-                        # Convert box to coordinates
-                        box = np.array(box)
-                        x_min = float(np.min(box[:, 0]))
-                        x_max = float(np.max(box[:, 0]))
-                        y_min = float(np.min(box[:, 1]))
-                        y_max = float(np.max(box[:, 1]))
+                    if score < self.layout_threshold:
+                        continue
 
-                        regions.append({
-                            "type": layout_type_str,
-                            "bbox": (x_min, y_min, x_max, y_max),
-                            "score": float(score),
-                        })
+                    if len(coordinate) >= 4:
+                        x_min, y_min, x_max, y_max = coordinate[:4]
+                    else:
+                        continue
 
+                    # Also check for 'order' key from the layout model
+                    reading_order = box_info.get("order", None)
+
+                    regions.append({
+                        "type": label,
+                        "bbox": (float(x_min), float(y_min), float(x_max), float(y_max)),
+                        "score": float(score),
+                        "reading_order": reading_order,
+                    })
+
+            logger.info(f"PaddleX layout detection found {len(regions)} regions")
             return regions
 
         except Exception as e:
-            logger.error(f"PaddleOCR layout detection failed: {e}")
+            logger.error(f"PaddleX layout detection failed: {e}")
             return []
+
+    def _save_layout_image(self, results: list, output_path: Union[str, Path]):
+        """
+        Save the layout detection visualization from PaddleX.
+
+        Args:
+            results: PaddleX layout analysis results
+            output_path: Path to save the visualization
+        """
+        try:
+            output_path = Path(output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
+            for result in results:
+                if hasattr(result, 'img'):
+                    img_dict = result.img
+                    # img_dict typically has "res" key with the visualization
+                    for key, vis_img in img_dict.items():
+                        if isinstance(vis_img, Image.Image):
+                            vis_img.save(output_path)
+                            logger.info(f"Saved layout detection image to {output_path}")
+                            return
+                        elif isinstance(vis_img, np.ndarray):
+                            pil_img = Image.fromarray(
+                                vis_img[:, :, ::-1] if len(vis_img.shape) == 3 and vis_img.shape[-1] == 3 else vis_img
+                            )
+                            pil_img.save(output_path)
+                            logger.info(f"Saved layout detection image to {output_path}")
+                            return
+        except Exception as e:
+            logger.warning(f"Failed to save layout detection image: {e}")
 
     def _predict_reading_order(
         self, regions: list[LayoutRegion], image: Image.Image
@@ -181,38 +241,39 @@ class LayoutDetector:
         if not regions:
             return regions
 
-        if self._reading_order_model is None:
-            # Fallback: sort by y-coordinate (top to bottom)
-            logger.info("Using fallback reading order (top-to-bottom)")
-            sorted_regions = sorted(regions, key=lambda r: (r.bbox.y_min, r.bbox.x_min))
+        # Check if any regions already have reading order from layout model
+        has_model_order = any(
+            r.metadata.get("model_reading_order") is not None for r in regions
+        )
+        if has_model_order:
+            # Use model-provided order
+            sorted_regions = sorted(
+                regions,
+                key=lambda r: (r.metadata.get("model_reading_order", 999), r.bbox.y_min),
+            )
             for i, region in enumerate(sorted_regions):
                 region.reading_order = i
             return sorted_regions
 
-        try:
-            # Use LayoutLM for reading order prediction
-            # This is a simplified implementation
-            # Full implementation would require proper tokenization of layout
+        if self._reading_order_model is not None:
+            try:
+                # Use LayoutLM-based reading order
+                sorted_regions = sorted(regions, key=lambda r: (
+                    r.bbox.y_min // 50 * 50,  # Group by rows (50px buckets)
+                    r.bbox.x_min
+                ))
+                for i, region in enumerate(sorted_regions):
+                    region.reading_order = i
+                return sorted_regions
+            except Exception as e:
+                logger.error(f"Reading order prediction failed: {e}")
 
-            # For now, use a heuristic based on position
-            # LayoutLM would provide better multi-column handling
-            sorted_regions = sorted(regions, key=lambda r: (
-                r.bbox.y_min // 50 * 50,  # Group by rows (50px buckets)
-                r.bbox.x_min
-            ))
-
-            for i, region in enumerate(sorted_regions):
-                region.reading_order = i
-
-            return sorted_regions
-
-        except Exception as e:
-            logger.error(f"Reading order prediction failed: {e}")
-            # Fallback to simple sorting
-            sorted_regions = sorted(regions, key=lambda r: (r.bbox.y_min, r.bbox.x_min))
-            for i, region in enumerate(sorted_regions):
-                region.reading_order = i
-            return sorted_regions
+        # Fallback: sort by y-coordinate (top to bottom), then x (left to right)
+        logger.info("Using spatial heuristic reading order (top-to-bottom, left-to-right)")
+        sorted_regions = sorted(regions, key=lambda r: (r.bbox.y_min, r.bbox.x_min))
+        for i, region in enumerate(sorted_regions):
+            region.reading_order = i
+        return sorted_regions
 
     def _detect_table_grid(self, region: LayoutRegion, ocr_regions: list[OCRRegion]) -> list[LayoutRegion]:
         """
@@ -225,13 +286,8 @@ class LayoutDetector:
         Returns:
             Sub-regions for table cells
         """
-        # Simple grid detection based on OCR region positions
         if not ocr_regions:
             return [region]
-
-        # Find unique row and column positions
-        y_positions = sorted(set(r.bbox.y_min for r in ocr_regions))
-        x_positions = sorted(set(r.bbox.x_min for r in ocr_regions))
 
         # Group into rows (within 10px tolerance)
         rows = []
@@ -250,7 +306,6 @@ class LayoutDetector:
         if current_row:
             rows.append(current_row)
 
-        # Update region metadata with grid info
         region.metadata["table_rows"] = len(rows)
         region.metadata["table_cells"] = len(ocr_regions)
 
@@ -260,6 +315,7 @@ class LayoutDetector:
         self,
         image_source: Union[str, Path, Image.Image, np.ndarray],
         ocr_regions: Optional[list[OCRRegion]] = None,
+        save_visualization: Optional[Union[str, Path]] = None,
     ) -> DocumentLayout:
         """
         Detect layout and assign reading order.
@@ -267,6 +323,7 @@ class LayoutDetector:
         Args:
             image_source: Image file path, PIL Image, or numpy array
             ocr_regions: Optional pre-extracted OCR regions
+            save_visualization: Optional path to save layout visualization image
 
         Returns:
             DocumentLayout with detected regions
@@ -288,8 +345,10 @@ class LayoutDetector:
 
         image_width, image_height = image.size
 
-        # Detect layout regions
-        layout_regions_raw = self._detect_layout_with_paddle(image)
+        # Detect layout regions using PaddleX (also saves visualization if requested)
+        layout_regions_raw = self._detect_layout_with_paddlex(
+            image, save_visualization=save_visualization
+        )
 
         # Create LayoutRegion objects
         layout_regions = []
@@ -301,7 +360,7 @@ class LayoutDetector:
                 continue
 
             region_type_str = raw["type"].lower()
-            region_type = LAYOUT_TYPE_MAP.get(region_type_str, RegionType.UNKNOWN)
+            region_type = LAYOUT_LABEL_MAP.get(region_type_str, RegionType.UNKNOWN)
 
             # Check for specific types
             if "table" in region_type_str:
@@ -310,6 +369,12 @@ class LayoutDetector:
                 region_type = RegionType.STAMP
             elif "handwriting" in region_type_str:
                 region_type = RegionType.HANDWRITING
+            elif "chart" in region_type_str:
+                region_type = RegionType.CHART
+
+            metadata = {}
+            if raw.get("reading_order") is not None:
+                metadata["model_reading_order"] = raw["reading_order"]
 
             layout_region = LayoutRegion(
                 id=f"layout_{uuid.uuid4().hex[:8]}",
@@ -320,8 +385,9 @@ class LayoutDetector:
                     x_max=x_max,
                     y_max=y_max,
                 ),
-                reading_order=i,  # Will be reassigned
+                reading_order=i,
                 confidence=raw["score"],
+                metadata=metadata,
             )
             layout_regions.append(layout_region)
 
@@ -408,7 +474,6 @@ class LayoutDetector:
             right_regions = [r for r in regions if r.bbox.center[0] > 2 * image_width / 3]
 
             if left_regions and right_regions:
-                # Check for vertical overlap
                 for left in left_regions:
                     for right in right_regions:
                         if self._regions_overlap_vertically(left, right):

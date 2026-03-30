@@ -129,7 +129,6 @@ class LayoutRegion:
         """Add an OCR region to this layout region."""
         self.ocr_regions.append(ocr_region)
         ocr_region.parent_id = self.id
-        self.children_ids.append(ocr_region.id)
 
     @property
     def children_ids(self) -> list:

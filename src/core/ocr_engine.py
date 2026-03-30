@@ -2,6 +2,7 @@
 
 import base64
 import logging
+import os
 from io import BytesIO
 from pathlib import Path
 from typing import Optional, Union
@@ -13,6 +14,13 @@ from PIL import Image
 from .dataclasses import OCRRegion, BoundingBox, RegionType
 
 logger = logging.getLogger(__name__)
+
+# Disable PaddlePaddle PIR to avoid oneDNN incompatibility on Windows.
+# Must be set BEFORE any paddle import.
+os.environ.setdefault("FLAGS_enable_pir_api", "0")
+os.environ.setdefault("FLAGS_enable_pir_in_executor", "0")
+os.environ.setdefault("FLAGS_enable_pir_with_pt_in_dy2st", "0")
+os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 
 
 class OCREngine:
@@ -54,8 +62,6 @@ class OCREngine:
             return
 
         try:
-            import os
-            os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
             from paddleocr import PaddleOCR
 
             # PaddleOCR accepts a single language code. For mixed Hindi/English
@@ -123,7 +129,6 @@ class OCREngine:
 
     def _pil_to_cv2(self, pil_image: Image.Image) -> np.ndarray:
         """Convert PIL image to OpenCV format."""
-        import cv2
         img_array = np.array(pil_image)
         # PIL is RGB, OpenCV expects BGR
         if len(img_array.shape) == 3 and img_array.shape[2] == 3:
@@ -132,10 +137,17 @@ class OCREngine:
 
     def _process_paddle_result(self, result, image_width: int, image_height: int) -> list[OCRRegion]:
         """
-        Process PaddleOCR result into OCRRegion objects.
+        Process PaddleOCR 3.x result into OCRRegion objects.
+
+        PaddleOCR 3.x returns a list of OCRResult dict-like objects with keys:
+          - rec_texts: list of recognized text strings
+          - rec_scores: list of confidence scores
+          - dt_polys: list of detection polygons
+          - rec_polys: list of recognition polygons
+          - rec_boxes: list of bounding boxes [[x_min, y_min, x_max, y_max], ...]
 
         Args:
-            result: PaddleOCR result tuple (boxes, texts, scores)
+            result: PaddleOCR 3.x result (list of OCRResult objects)
             image_width: Original image width
             image_height: Original image height
 
@@ -147,52 +159,126 @@ class OCREngine:
         if result is None or len(result) == 0:
             return regions
 
-        # PaddleOCR returns: (boxes, texts, scores)
-        boxes = result[0] if len(result) > 0 else []
-        texts = result[1] if len(result) > 1 else []
-        scores = result[2] if len(result) > 2 else []
+        for page_result in result:
+            # PaddleOCR 3.x: each page_result is an OCRResult dict-like object
+            if hasattr(page_result, '__getitem__') and not isinstance(page_result, (list, tuple)):
+                # Dict-like OCRResult object (PaddleOCR 3.x)
+                rec_texts = page_result.get("rec_texts", []) if hasattr(page_result, 'get') else page_result["rec_texts"]
+                rec_scores = page_result.get("rec_scores", []) if hasattr(page_result, 'get') else page_result["rec_scores"]
 
-        for i, (box, text, score) in enumerate(zip(boxes, texts, scores)):
-            if text is None or text.strip() == "":
-                continue
+                # Prefer rec_boxes (already [x_min, y_min, x_max, y_max])
+                # Fall back to dt_polys or rec_polys
+                boxes = None
+                use_boxes = False
+                try:
+                    boxes = page_result["rec_boxes"]
+                    use_boxes = True
+                except (KeyError, TypeError):
+                    pass
 
-            # Normalize coordinates if needed
-            box = np.array(box)
-            if box.max() > 1.0:
-                # Absolute coordinates
-                x_min = float(np.min(box[:, 0]))
-                x_max = float(np.max(box[:, 0]))
-                y_min = float(np.min(box[:, 1]))
-                y_max = float(np.max(box[:, 1]))
-            else:
-                # Normalized coordinates
-                x_min = float(np.min(box[:, 0]) * image_width)
-                x_max = float(np.max(box[:, 0]) * image_width)
-                y_min = float(np.min(box[:, 1]) * image_height)
-                y_max = float(np.max(box[:, 1]) * image_height)
+                if boxes is None or (hasattr(boxes, '__len__') and len(boxes) == 0):
+                    try:
+                        boxes = page_result["dt_polys"]
+                        use_boxes = False
+                    except (KeyError, TypeError):
+                        try:
+                            boxes = page_result["rec_polys"]
+                            use_boxes = False
+                        except (KeyError, TypeError):
+                            continue
 
-            # Ensure coordinates are within bounds
-            x_min = max(0, min(x_min, image_width))
-            x_max = max(0, min(x_max, image_width))
-            y_min = max(0, min(y_min, image_height))
-            y_max = max(0, min(y_max, image_height))
+                for i, (text, score) in enumerate(zip(rec_texts, rec_scores)):
+                    if i >= len(boxes):
+                        break
+                    if text is None or str(text).strip() == "":
+                        continue
 
-            language = self._detect_language(text)
+                    text = str(text).strip()
+                    score = float(score)
+                    box = np.array(boxes[i])
 
-            region = OCRRegion(
-                id=f"ocr_{uuid.uuid4().hex[:8]}",
-                text=text.strip(),
-                bbox=BoundingBox(
-                    x_min=x_min,
-                    y_min=y_min,
-                    x_max=x_max,
-                    y_max=y_max,
-                ),
-                confidence=float(score),
-                language=language,
-                region_type=RegionType.TEXT,
-            )
-            regions.append(region)
+                    if use_boxes and box.ndim == 1 and len(box) == 4:
+                        # rec_boxes format: [x_min, y_min, x_max, y_max]
+                        x_min, y_min, x_max, y_max = float(box[0]), float(box[1]), float(box[2]), float(box[3])
+                    else:
+                        # Polygon format: [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]
+                        if box.ndim == 1:
+                            continue
+                        x_min = float(np.min(box[:, 0]))
+                        x_max = float(np.max(box[:, 0]))
+                        y_min = float(np.min(box[:, 1]))
+                        y_max = float(np.max(box[:, 1]))
+
+                    # Ensure coordinates are within bounds
+                    x_min = max(0, min(x_min, image_width))
+                    x_max = max(0, min(x_max, image_width))
+                    y_min = max(0, min(y_min, image_height))
+                    y_max = max(0, min(y_max, image_height))
+
+                    language = self._detect_language(text)
+
+                    region = OCRRegion(
+                        id=f"ocr_{uuid.uuid4().hex[:8]}",
+                        text=text,
+                        bbox=BoundingBox(
+                            x_min=x_min,
+                            y_min=y_min,
+                            x_max=x_max,
+                            y_max=y_max,
+                        ),
+                        confidence=score,
+                        language=language,
+                        region_type=RegionType.TEXT,
+                    )
+                    regions.append(region)
+
+            elif isinstance(page_result, list):
+                # Legacy PaddleOCR 2.x format: [[box, (text, score)], ...]
+                for item in page_result:
+                    if not isinstance(item, (list, tuple)) or len(item) < 2:
+                        continue
+                    box = np.array(item[0])
+                    text_info = item[1]
+                    if isinstance(text_info, (list, tuple)) and len(text_info) >= 2:
+                        text = str(text_info[0]).strip()
+                        score = float(text_info[1])
+                    elif isinstance(text_info, str):
+                        text = text_info.strip()
+                        score = 1.0
+                    else:
+                        continue
+
+                    if not text:
+                        continue
+
+                    if box.ndim == 1:
+                        continue
+                    x_min = float(np.min(box[:, 0]))
+                    x_max = float(np.max(box[:, 0]))
+                    y_min = float(np.min(box[:, 1]))
+                    y_max = float(np.max(box[:, 1]))
+
+                    x_min = max(0, min(x_min, image_width))
+                    x_max = max(0, min(x_max, image_width))
+                    y_min = max(0, min(y_min, image_height))
+                    y_max = max(0, min(y_max, image_height))
+
+                    language = self._detect_language(text)
+
+                    region = OCRRegion(
+                        id=f"ocr_{uuid.uuid4().hex[:8]}",
+                        text=text,
+                        bbox=BoundingBox(
+                            x_min=x_min,
+                            y_min=y_min,
+                            x_max=x_max,
+                            y_max=y_max,
+                        ),
+                        confidence=score,
+                        language=language,
+                        region_type=RegionType.TEXT,
+                    )
+                    regions.append(region)
 
         return regions
 
@@ -296,27 +382,30 @@ class OCREngine:
         # Try PaddleOCR first (unless forced to use Tesseract)
         if not force_tesseract and self._ocr is not None:
             try:
-                import cv2
                 cv2_image = self._pil_to_cv2(image)
-                # ✅ REMOVE cls=True parameter (PaddleOCR 3.x doesn't support it)
-                result = self._ocr.ocr(cv2_image)  # Don't pass cls parameter
-                
-                # Flatten result if nested
-                if result and len(result) == 1 and isinstance(result[0], list):
-                    result = result[0]
+                # PaddleOCR 3.x: use predict() (ocr() is deprecated)
+                result = self._ocr.predict(cv2_image)
 
                 regions = self._process_paddle_result(result, image_width, image_height)
 
                 if regions:
                     logger.info(f"Extracted {len(regions)} text regions with PaddleOCR")
                     return regions
+                else:
+                    logger.warning("PaddleOCR returned 0 regions, trying Tesseract fallback")
 
             except Exception as e:
                 logger.warning(f"PaddleOCR failed: {e}, falling back to Tesseract")
-        
+
         # Fallback to Tesseract
         regions = self._process_tesseract_result(image, image_width, image_height)
-        logger.info(f"Extracted {len(regions)} text regions with Tesseract")
+        if not regions:
+            logger.warning(
+                "Tesseract returned 0 regions. Ensure Tesseract is installed: "
+                "https://github.com/tesseract-ocr/tesseract#installing-tesseract"
+            )
+        else:
+            logger.info(f"Extracted {len(regions)} text regions with Tesseract")
         return regions
 
     def extract_from_base64(self, base64_string: str) -> list[OCRRegion]:

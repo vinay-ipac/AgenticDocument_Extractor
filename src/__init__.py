@@ -12,6 +12,15 @@ Example usage:
     voters = processor.extract_voter_list(result)
 """
 
+import os
+
+# Disable PaddlePaddle PIR to avoid oneDNN incompatibility on Windows.
+# Must be set BEFORE any paddle import throughout the application.
+os.environ.setdefault("FLAGS_enable_pir_api", "0")
+os.environ.setdefault("FLAGS_enable_pir_in_executor", "0")
+os.environ.setdefault("FLAGS_enable_pir_with_pt_in_dy2st", "0")
+os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+
 from .pipelines.document_processor import DocumentProcessor, ProcessingResult
 from .core.dataclasses import (
     OCRRegion,

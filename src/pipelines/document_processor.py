@@ -140,6 +140,7 @@ class DocumentProcessor:
         document: Union[str, Path, Image.Image, list[Image.Image]],
         analyze_regions: bool = True,
         region_types: Optional[list[RegionType]] = None,
+        layout_output_dir: Optional[Union[str, Path]] = None,
     ) -> ProcessingResult:
         """
         Process a document through the full pipeline.
@@ -148,6 +149,7 @@ class DocumentProcessor:
             document: Document path, image, or list of images
             analyze_regions: Whether to analyze regions with VLM
             region_types: Types of regions to analyze
+            layout_output_dir: Optional directory to save layout detection images
 
         Returns:
             ProcessingResult with all outputs
@@ -182,6 +184,11 @@ class DocumentProcessor:
                 errors=[str(e)],
             )
 
+        # Prepare layout output directory
+        if layout_output_dir:
+            layout_output_dir = Path(layout_output_dir)
+            layout_output_dir.mkdir(parents=True, exist_ok=True)
+
         layouts = []
         analyses = []
 
@@ -195,10 +202,34 @@ class DocumentProcessor:
                 logger.info(f"  Extracted {len(ocr_regions)} OCR regions")
 
                 # Step 2: Layout detection
-                layout = self.layout_detector.detect(image, ocr_regions=ocr_regions)
+                layout_vis_path = None
+                if layout_output_dir:
+                    layout_vis_path = str(layout_output_dir / f"layout_page_{i + 1}.png")
+
+                layout = self.layout_detector.detect(
+                    image,
+                    ocr_regions=ocr_regions,
+                    save_visualization=layout_vis_path,
+                )
                 layout.page_number = i + 1
                 layouts.append(layout)
                 logger.info(f"  Detected {len(layout.regions)} layout regions")
+
+                # Step 2b: Also save our own visualization with region labels and reading order
+                if layout_output_dir:
+                    try:
+                        vis_path = layout_output_dir / f"layout_annotated_page_{i + 1}.png"
+                        draw_layout(
+                            layout=layout,
+                            image=image,
+                            output_path=vis_path,
+                            show_labels=True,
+                            show_reading_order=True,
+                            show_ocr=True,
+                        )
+                        logger.info(f"  Saved annotated layout to {vis_path}")
+                    except Exception as e:
+                        logger.warning(f"  Failed to save annotated layout: {e}")
 
                 # Step 3: Region analysis (optional)
                 if analyze_regions and self.orchestrator:
@@ -227,7 +258,7 @@ class DocumentProcessor:
             layouts=layouts,
             analyses=analyses,
             processing_time=processing_time,
-            images=images if self.verbose else [],
+            images=images,  # Always store for downstream extraction/visualization
             errors=errors,
         )
 
