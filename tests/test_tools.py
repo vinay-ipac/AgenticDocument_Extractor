@@ -121,6 +121,12 @@ class TestAnalyzeForm:
         return Image.new("RGB", (400, 600), color="white")
 
     @pytest.fixture
+    def region_processor(self):
+        """Create region processor."""
+        from agentic_document_extractor.core.region_processor import RegionProcessor
+        return RegionProcessor()
+
+    @pytest.fixture
     def form_region(self):
         return LayoutRegion(
             id="form_1",
@@ -131,9 +137,6 @@ class TestAnalyzeForm:
 
     def test_analyze_form_runs(self, mock_client, region_processor, sample_image, form_region):
         """Test AnalyzeForm execution."""
-        from agentic_document_extractor.core.region_processor import RegionProcessor
-        region_processor = RegionProcessor()
-
         tool = AnalyzeForm(mock_client, region_processor, sample_image)
         tool._regions = [form_region]
 

@@ -117,10 +117,24 @@ class AnalyzeTable(VLMToolMixin, BaseTool):
 
     name: str = "analyze_table"
     description: str = "Analyze a table region and extract structured row-column data"
+    
+    vlm_client: Optional[object] = None
+    region_processor: Optional[object] = None
+    image: Optional[object] = None
+    document_context: str = ""
+    language: str = "en"
 
     def __init__(self, vlm_client, region_processor, image, document_context: str = "", language: str = "en"):
-        super().__init__(vlm_client, region_processor, image, document_context, language)
-        self.args_schema = None  # Dynamic schema
+        # super().__init__(vlm_client, region_processor, image, document_context, language)
+        # ✅ Initialize BaseTool first without Pydantic validation
+        BaseTool.__init__(self)
+        # ✅ Then set attributes directly
+        self.vlm_client = vlm_client
+        self.region_processor = region_processor
+        self.image = image
+        self.document_context = document_context
+        self.language = language
+        self.args_schema = None
 
     def _run(self, region_id: str, use_hindi: bool = False) -> dict:
         """
@@ -173,9 +187,22 @@ class AnalyzeTableHindi(VLMToolMixin, BaseTool):
 
     name: str = "analyze_table_hindi"
     description: str = "Analyze a Hindi table region and extract structured data (uses Hindi prompts)"
+    vlm_client: Optional[object] = None
+    region_processor: Optional[object] = None
+    image: Optional[object] = None
+    document_context: str = ""
+    language: str = "en"
 
     def __init__(self, vlm_client, region_processor, image, document_context: str = "", language: str = "hi"):
-        super().__init__(vlm_client, region_processor, image, document_context, language)
+        # super().__init__(vlm_client, region_processor, image, document_context, language)
+        # ✅ Initialize BaseTool first without Pydantic validation
+        BaseTool.__init__(self)
+        # ✅ Then set attributes directly
+        self.vlm_client = vlm_client
+        self.region_processor = region_processor
+        self.image = image
+        self.document_context = document_context
+        self.language = language
         self.args_schema = None
 
     def _run(self, region_id: str) -> dict:
@@ -205,9 +232,22 @@ class AnalyzeForm(VLMToolMixin, BaseTool):
 
     name: str = "analyze_form"
     description: str = "Analyze a form region and extract field-value pairs"
+    vlm_client: Optional[object] = None
+    region_processor: Optional[object] = None
+    image: Optional[object] = None
+    document_context: str = ""
+    language: str = "en"
 
     def __init__(self, vlm_client, region_processor, image, document_context: str = "", language: str = "en"):
-        super().__init__(vlm_client, region_processor, image, document_context, language)
+        # super().__init__(vlm_client, region_processor, image, document_context, language)
+        # ✅ Initialize BaseTool first without Pydantic validation
+        BaseTool.__init__(self)
+        # ✅ Then set attributes directly
+        self.vlm_client = vlm_client
+        self.region_processor = region_processor
+        self.image = image
+        self.document_context = document_context
+        self.language = language
         self.args_schema = None
 
     def _run(self, region_id: str) -> dict:
@@ -246,9 +286,22 @@ class AnalyzeStamp(VLMToolMixin, BaseTool):
 
     name: str = "analyze_stamp"
     description: str = "Analyze a stamp or seal region and extract text/metadata"
+    vlm_client: Optional[object] = None
+    region_processor: Optional[object] = None
+    image: Optional[object] = None
+    document_context: str = ""
+    language: str = "en"
 
     def __init__(self, vlm_client, region_processor, image, document_context: str = "", language: str = "en"):
-        super().__init__(vlm_client, region_processor, image, document_context, language)
+        # super().__init__(vlm_client, region_processor, image, document_context, language)
+        # ✅ Initialize BaseTool first without Pydantic validation
+        BaseTool.__init__(self)
+        # ✅ Then set attributes directly
+        self.vlm_client = vlm_client
+        self.region_processor = region_processor
+        self.image = image
+        self.document_context = document_context
+        self.language = language
         self.args_schema = None
 
     def _run(self, region_id: str) -> dict:
@@ -287,9 +340,22 @@ class AnalyzeChart(VLMToolMixin, BaseTool):
 
     name: str = "analyze_chart"
     description: str = "Analyze a chart or graph region and extract data points"
+    vlm_client: Optional[object] = None
+    region_processor: Optional[object] = None
+    image: Optional[object] = None
+    document_context: str = ""
+    language: str = "en"
 
     def __init__(self, vlm_client, region_processor, image, document_context: str = "", language: str = "en"):
-        super().__init__(vlm_client, region_processor, image, document_context, language)
+        # super().__init__(vlm_client, region_processor, image, document_context, language)
+        # ✅ Initialize BaseTool first without Pydantic validation
+        BaseTool.__init__(self)
+        # ✅ Then set attributes directly
+        self.vlm_client = vlm_client
+        self.region_processor = region_processor
+        self.image = image
+        self.document_context = document_context
+        self.language = language
         self.args_schema = None
 
     def _run(self, region_id: str) -> dict:
