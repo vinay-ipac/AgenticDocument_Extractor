@@ -1,0 +1,55 @@
+{
+  "type": "object",
+  "properties": {
+    "booth_level_agents": {
+      "type": "array",
+      "title": "Booth Level Agents",
+      "description": "List of booth level agents and their details.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "assembly_constituency_name": {
+            "type": "string",
+            "title": "Assembly Constituency Name",
+            "description": "Name of the Assembly Constituency to which this booth belongs.",
+            "nullable": true
+          },
+          "booth_number": {
+            "type": "integer",
+            "title": "Booth Number",
+            "description": "Booth number/part number of that particular booth. Strictly not the serial number.",
+            "nullable": true
+          },
+          "polling_station_name": {
+            "type": "string",
+            "title": "Polling Station Name",
+            "description": "Full name of the polling station/booth name/part name.",
+            "nullable": true
+          },
+          "agent_name": {
+            "type": "string",
+            "title": "Agent Name",
+            "description": "Name of the booth level agent. Strictly not the father's name. Do not confuse with the father's name column.If बी.एल.ए. का नाम and पिता का नाम both columns available, you should strictly extract only the बी.एल.ए. का नाम as this is the booth agents name",
+            "nullable": true
+          },
+          "mobile_number": {
+            "type": "string",
+            "title": "Mobile Number",
+            "description": "Mobile number/Phone Number/Contact Number of the Booth Level Agent.",
+            "nullable": true
+          }
+        },
+        "required": [
+          "assembly_constituency_name",
+          "booth_number",
+          "polling_station_name",
+          "agent_name",
+          "mobile_number"
+        ]
+      }
+    }
+  },
+  "required": [
+    "booth_level_agents"
+  ]
+}

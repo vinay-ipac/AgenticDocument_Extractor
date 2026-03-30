@@ -1,0 +1,17 @@
+{
+  "agent_name": "Priya Sharma",
+  "agent_id": "AGT-2024-001234",
+  "contact_number": "+91 9876543210",
+  "alternate_contact": "+91 9876543211",
+  "email": "priya.sharma@example.com",
+  "area": "Lucknow Central",
+  "district": "Lucknow",
+  "state": "Uttar Pradesh",
+  "pin_code": "226001",
+  "status": "Active",
+  "registration_date": "2024-01-15",
+  "valid_until": "2025-01-14",
+  "supervisor_name": "Rajesh Kumar",
+  "office_address": "District Office, Lucknow",
+  "confidence": 0.94
+}

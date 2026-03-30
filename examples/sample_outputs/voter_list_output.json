@@ -1,0 +1,51 @@
+{
+  "voters": [
+    {
+      "serial_number": "1",
+      "name": "Ramesh Kumar Singh",
+      "father_name": "Suresh Kumar Singh",
+      "age": 45,
+      "gender": "Male",
+      "address": "House No 123, Village Ramnagar",
+      "constituency": "Lucknow East",
+      "assembly_constituency_no": 112,
+      "part_no": "45",
+      "epic_no": "ABC1234567",
+      "confidence": 0.95
+    },
+    {
+      "serial_number": "2",
+      "name": "Sunita Devi",
+      "father_name": "Ramesh Kumar Singh",
+      "age": 42,
+      "gender": "Female",
+      "address": "House No 123, Village Ramnagar",
+      "constituency": "Lucknow East",
+      "assembly_constituency_no": 112,
+      "part_no": "45",
+      "epic_no": "ABC1234568",
+      "confidence": 0.93
+    },
+    {
+      "serial_number": "3",
+      "name": "अमित कुमार",
+      "father_name": "रमेश कुमार सिंह",
+      "age": 22,
+      "gender": "Male",
+      "address": "मकान नं 123, ग्राम रामनगर",
+      "constituency": "लखनऊ पूर्व",
+      "assembly_constituency_no": 112,
+      "part_no": "45",
+      "epic_no": "ABC1234569",
+      "confidence": 0.91
+    }
+  ],
+  "metadata": {
+    "total_voters": 3,
+    "constituency_name": "Lucknow East",
+    "part_number": "45",
+    "year": "2024",
+    "language": "mixed"
+  },
+  "extraction_notes": "Extracted 3 voters from page 1. Hindi text preserved in Devanagari script."
+}

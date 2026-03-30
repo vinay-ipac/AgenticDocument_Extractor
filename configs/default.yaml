@@ -1,0 +1,55 @@
+# Agentic Document Extractor - Default Configuration
+
+# OCR Settings
+ocr:
+  languages:
+    - hi  # Hindi
+    - en  # English
+  use_gpu: false
+  show_log: false
+  det_db_thresh: 0.3
+  det_db_box_thresh: 0.5
+  use_angle_cls: true
+
+# Layout Detection Settings
+layout:
+  model_name: layoutlmv3-base
+  use_gpu: false
+  min_region_area: 1000
+
+# Region Processing
+region:
+  padding: 10
+  cache_enabled: true
+  max_cache_size: 100
+  output_format: PNG
+  quality: 95
+
+# VLM Settings
+vlm:
+  model: gpt-4o-mini
+  temperature: 0.1
+  max_tokens: 2000
+
+# Agent Settings
+agent:
+  verbose: true
+  max_iterations: 10
+
+# Pipeline Settings
+pipeline:
+  max_pages: 100
+  dpi: 150
+  analyze_regions: true
+  store_images: false
+
+# Output Settings
+output:
+  format: json  # json, csv, html
+  indent: 2
+  ensure_ascii: false
+
+# Logging Settings
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
