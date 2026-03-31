@@ -143,23 +143,31 @@ class TestDocumentProcessorExtraction:
     def test_extract_schema_without_vlm(self):
         """Test schema extraction without VLM."""
         from unittest.mock import Mock
-        
-        # ✅ Mock the OpenAI client directly
+
+        # Mock the OpenAI client and its response
+        mock_response = Mock()
+        mock_response.choices = [Mock(message=Mock(content='{"fields": {}}'))]
         mock_vlm = Mock()
-        
+        mock_vlm.chat.completions.create.return_value = mock_response
+
         processor = DocumentProcessor(vlm_client=mock_vlm)
-        
-        # Create a minimal result
+
+        # Create a minimal result with proper layout mock
         from PIL import Image
+        mock_layout = Mock()
+        mock_layout.regions = []  # Empty regions list
+
         result = ProcessingResult(
             document_path="test.pdf",
             page_count=1,
             images=[Image.new("RGB", (400, 400))],
-            layouts=[Mock()]
+            layouts=[mock_layout]
         )
-    
-        extraction = processor.extract_schema(result, "schema")
+
+        # Use valid schema name or dict
+        extraction = processor.extract_schema(result, "generic_form")
         assert extraction is not None
+        assert isinstance(extraction, dict)
 
     def test_visualize(self, processor, sample_image, tmp_path):
         """Test visualization generation."""

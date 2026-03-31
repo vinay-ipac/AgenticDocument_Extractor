@@ -9,7 +9,7 @@ from PIL import Image
 
 from ..core.dataclasses import DocumentLayout, RegionType
 from ..core.region_processor import RegionProcessor
-from .schemas import get_schema, VOTER_LIST_SCHEMA, AGENT_DETAILS_SCHEMA
+from .schemas import get_schema
 
 logger = logging.getLogger(__name__)
 
@@ -200,50 +200,6 @@ Return ONLY valid JSON matching the schema structure."""
             confidence -= 0.1
 
         return max(0.0, min(1.0, confidence))
-
-    def extract_voter_list(
-        self,
-        image: Image.Image,
-        layout: Optional[DocumentLayout] = None,
-    ) -> dict:
-        """
-        Extract voter list using predefined schema.
-
-        Args:
-            image: PIL Image
-            layout: Optional DocumentLayout
-
-        Returns:
-            Extracted voter data
-        """
-        return self.extract(
-            schema=VOTER_LIST_SCHEMA,
-            image=image,
-            layout=layout,
-            context="This is a voter list/electoral roll document. Extract all voter entries.",
-        )
-
-    def extract_agent_details(
-        self,
-        image: Image.Image,
-        layout: Optional[DocumentLayout] = None,
-    ) -> dict:
-        """
-        Extract agent details using predefined schema.
-
-        Args:
-            image: PIL Image
-            layout: Optional DocumentLayout
-
-        Returns:
-            Extracted agent data
-        """
-        return self.extract(
-            schema=AGENT_DETAILS_SCHEMA,
-            image=image,
-            layout=layout,
-            context="This is an agent registration/details form. Extract agent information.",
-        )
 
     def validate_extraction(
         self,

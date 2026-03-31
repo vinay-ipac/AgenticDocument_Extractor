@@ -26,15 +26,18 @@ logger = logging.getLogger(__name__)
 @click.pass_context
 def cli(ctx, verbose: bool):
     """
-    Agentic Document Extractor - Extract structured data from Indian government documents.
+    Agentic Document Extractor - Extract structured data from any document type.
 
-    Supports Hindi and English documents including voter lists, agent forms, and more.
+    Schema-driven system supporting custom JSON schemas for extracting data from
+    invoices, forms, tables, receipts, and any other document type.
 
     Examples:
 
         docextract process document.pdf --output results/
 
-        docextract extract document.pdf --schema voter_list --output data.json
+        docextract extract document.pdf --schema generic_form --output data.json
+
+        docextract extract invoice.pdf --schema examples/schemas/invoice_schema.json --output invoice.json
 
         docextract visualize document.pdf --output layout.png
     """
@@ -54,8 +57,8 @@ def cli(ctx, verbose: bool):
 )
 @click.option(
     "--schema", "-s",
-    type=click.Choice(["voter_list", "agent_details", "generic_form"]),
-    help="Schema for data extraction",
+    type=str,
+    help="Schema name (generic_form, table) or path to JSON schema file",
 )
 @click.option(
     "--no-analyze",
@@ -162,7 +165,7 @@ def process(
     "--schema", "-s",
     type=str,
     required=True,
-    help="Schema name (voter_list, agent_details, generic_form, table) or path to a JSON schema file",
+    help="Schema name (generic_form, table) or path to a JSON schema file",
 )
 @click.option(
     "--output", "-o",
@@ -188,7 +191,7 @@ def extract(ctx, document: str, schema: str, output: str, page: int, save_layout
 
     DOCUMENT: Path to the document
 
-    SCHEMA: A predefined name (voter_list, agent_details, generic_form, table) or a path to a JSON schema file.
+    SCHEMA: A predefined name (generic_form, table) or a path to a JSON schema file.
     """
     from ..pipelines.document_processor import DocumentProcessor
     from ..extractors.schemas import get_schema
@@ -246,12 +249,13 @@ def extract(ctx, document: str, schema: str, output: str, page: int, save_layout
                 for lf in layout_files:
                     click.echo(f"  - {lf.name}")
 
-        # Show summary
+        # Show summary (generic - auto-detect array fields and key fields)
         if "error" not in extraction:
-            if schema == "voter_list" and "voters" in extraction:
-                click.echo(f"Extracted {len(extraction.get('voters', []))} voters")
-            elif schema == "agent_details" and "agent_name" in extraction:
-                click.echo(f"Agent: {extraction.get('agent_name', 'N/A')}")
+            for field_name, field_value in extraction.items():
+                if isinstance(field_value, list) and field_name != "errors":
+                    click.echo(f"Extracted {len(field_value)} {field_name}")
+                elif field_name in ["name", "title", "form_type", "document_type"]:
+                    click.echo(f"{field_name.replace('_', ' ').title()}: {field_value}")
 
     except Exception as e:
         logger.exception("Extraction failed")
@@ -321,56 +325,6 @@ def visualize(ctx, document: str, output: str, page: int, no_ocr: bool):
 
     except Exception as e:
         logger.exception("Visualization failed")
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
-
-
-@cli.command()
-@click.argument("document", type=click.Path(exists=True))
-@click.option(
-    "--output", "-o",
-    type=click.Path(),
-    default="voters.csv",
-    help="Output CSV file",
-)
-@click.pass_context
-def extract_voters(ctx, document: str, output: str):
-    """
-    Extract voter list data to CSV.
-
-    DOCUMENT: Path to voter list document (PDF or image)
-    """
-    from ..pipelines.document_processor import DocumentProcessor
-    from ..utils.helpers import save_results_csv
-
-    click.echo(f"Extracting voter list: {document}")
-
-    try:
-        processor = DocumentProcessor(
-            verbose=ctx.obj.get("verbose", False),
-        )
-
-        result = processor.process(document, analyze_regions=True)
-        extraction = processor.extract_voter_list(result)
-
-        if "error" in extraction:
-            click.echo(f"Extraction error: {extraction['error']}")
-            sys.exit(1)
-
-        voters = extraction.get("voters", [])
-        if not voters:
-            click.echo("No voters found in document")
-            sys.exit(0)
-
-        # Save to CSV
-        output_path = Path(output)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        save_results_csv(voters, output_path)
-
-        click.echo(f"\n[OK] Extracted {len(voters)} voters to: {output_path}")
-
-    except Exception as e:
-        logger.exception("Voter extraction failed")
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
 

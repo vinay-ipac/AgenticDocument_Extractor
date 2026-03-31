@@ -1,4 +1,5 @@
 {
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "title": "Voter List",
   "description": "Schema for extracting voter information from electoral rolls",
@@ -49,6 +50,10 @@
           "epic_no": {
             "type": "string",
             "description": "EPIC (Electoral Photo Identity Card) number"
+          },
+          "date_of_birth": {
+            "type": "string",
+            "description": "Date of birth if available"
           },
           "confidence": {
             "type": "number",

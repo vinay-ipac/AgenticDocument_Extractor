@@ -312,24 +312,6 @@ class DocumentProcessor:
 
         return extraction
 
-    def extract_voter_list(
-        self,
-        result: ProcessingResult,
-        page: int = 0,
-    ) -> dict:
-        """Extract voter list data."""
-        from ..extractors.schemas import VOTER_LIST_SCHEMA
-        return self.extract_schema(result, VOTER_LIST_SCHEMA, page)
-
-    def extract_agent_details(
-        self,
-        result: ProcessingResult,
-        page: int = 0,
-    ) -> dict:
-        """Extract agent details."""
-        from ..extractors.schemas import AGENT_DETAILS_SCHEMA
-        return self.extract_schema(result, AGENT_DETAILS_SCHEMA, page)
-
     def visualize(
         self,
         result: ProcessingResult,
@@ -408,15 +390,22 @@ class DocumentProcessor:
             )
             generated["html"] = html_path
 
-        # CSV exports for voter data
+        # CSV exports for array data (auto-detect)
         if result.extractions:
             for i, ext in enumerate(result.extractions):
-                if "data" in ext and "voters" in ext.get("data", {}):
-                    voters = ext["data"]["voters"]
-                    if voters:
-                        csv_path = output_dir / f"voters_page_{ext['page']}.csv"
-                        save_results_csv(voters, csv_path)
-                        generated[f"csv_page_{ext['page']}"] = csv_path
+                if "data" not in ext:
+                    continue
+                data = ext["data"]
+                page_num = ext.get("page", i + 1)
+
+                # Export any top-level array field to CSV
+                for field_name, field_value in data.items():
+                    if (isinstance(field_value, list) and
+                        field_value and
+                        isinstance(field_value[0], dict)):
+                        csv_path = output_dir / f"{field_name}_page_{page_num}.csv"
+                        save_results_csv(field_value, csv_path)
+                        generated[f"csv_{field_name}_page_{page_num}"] = csv_path
 
         logger.info(f"Generated report files in {output_dir}")
         return generated

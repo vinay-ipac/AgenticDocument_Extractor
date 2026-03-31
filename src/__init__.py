@@ -1,15 +1,15 @@
 """
 Agentic Document Extractor - End-to-end document extraction using DPT architecture.
 
-This package provides tools for extracting structured data from Indian government
-and administrative documents, with support for Hindi and English languages.
+This package provides a generic, schema-driven system for extracting structured data
+from any document type using custom JSON schemas.
 
 Example usage:
     from agentic_document_extractor import DocumentProcessor
 
     processor = DocumentProcessor()
-    result = processor.process("voter_list.pdf")
-    voters = processor.extract_voter_list(result)
+    result = processor.process("document.pdf")
+    data = processor.extract_schema(result, "generic_form")
 """
 
 import os
@@ -36,9 +36,8 @@ from .core.region_processor import RegionProcessor
 from .agents.orchestrator import AgentOrchestrator
 from .extractors.schema_extractor import SchemaExtractor
 from .extractors.schemas import (
-    VOTER_LIST_SCHEMA,
-    AGENT_DETAILS_SCHEMA,
     GENERIC_FORM_SCHEMA,
+    TABLE_SCHEMA,
     get_schema,
 )
 from .utils.helpers import (
@@ -67,9 +66,8 @@ __all__ = [
     # Extractors
     "SchemaExtractor",
     # Schemas
-    "VOTER_LIST_SCHEMA",
-    "AGENT_DETAILS_SCHEMA",
     "GENERIC_FORM_SCHEMA",
+    "TABLE_SCHEMA",
     "get_schema",
     # Data classes
     "OCRRegion",

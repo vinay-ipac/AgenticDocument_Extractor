@@ -1,0 +1,19 @@
+{
+    "type": "object",
+    "properties": {
+        "question": {
+            "type": "string",
+            "title": "To whom is the document sent?",
+            "description": "To whom is the document sent?"
+        },
+        "answer": {
+            "type": "string",
+            "title": "Answer",
+            "description": "Answer to the question"
+        }
+    },
+    "required": [
+        "question",
+        "answer"
+    ]
+}

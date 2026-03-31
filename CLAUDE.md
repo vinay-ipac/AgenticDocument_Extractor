@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Agentic Document Extractor — an end-to-end document extraction system for Indian government and administrative documents (voter lists, agent details forms). Combines PaddleOCR, LayoutLMv3 layout detection, GPT-4o-mini VLM analysis, and JSON schema-driven extraction into a unified pipeline.
+Agentic Document Extractor — a generic, schema-driven document extraction system supporting any document type through custom JSON schemas. Combines PaddleOCR, PaddleX layout detection, GPT-4o VLM analysis, and JSON schema-driven extraction into a unified pipeline. Similar architecture to landing.ai's approach.
 
 ## Commands
 
@@ -26,7 +26,8 @@ ruff check src/ tests/ cli/
 
 # CLI (after pip install -e .)
 docextract process doc.pdf --output results/
-docextract extract doc.pdf --schema voter_list --output data.json
+docextract extract doc.pdf --schema generic_form --output data.json
+docextract extract invoice.pdf --schema examples/schemas/invoice_schema.json --output invoice.json
 docextract visualize doc.pdf --output layout.png
 docextract info --check-env
 ```
@@ -53,11 +54,11 @@ Document (PDF/Image/DOCX)
 
 **Domain models** (`src/core/dataclasses.py`): `BoundingBox`, `OCRRegion`, `LayoutRegion`, `DocumentLayout`, `RegionType` enum, `LayoutType` enum. All support `to_dict()`/`from_dict()` serialization.
 
-**Predefined extraction schemas** (`src/extractors/schemas.py`): `voter_list`, `agent_details`, `generic_form`. Custom schemas supported as JSON dicts.
+**Predefined extraction schemas** (`src/extractors/schemas.py`): `generic_form`, `table`. Custom schemas supported as JSON dicts or files. Example schemas in `examples/schemas/` (invoice, receipt, voter_list, agent_details).
 
 **Agent tools** (`src/agents/tools.py`): VLM-powered tools for table, form, stamp, and chart analysis, orchestrated via LangChain's `create_tool_calling_agent`.
 
-**CLI** (`cli/main.py`): Click-based with commands: `process`, `extract`, `visualize`, `extract-voters`, `info`.
+**CLI** (`src/cli/main.py`): Click-based with commands: `process`, `extract`, `visualize`, `info`. Schema-driven - works with any document type via custom schemas.
 
 ## Configuration
 
@@ -72,3 +73,32 @@ Document (PDF/Image/DOCX)
 - Target Python versions: 3.9, 3.10, 3.11
 - Use Pydantic dataclasses for domain models with `to_dict()`/`from_dict()` pattern
 - Imports organized: stdlib → third-party → local (relative within `src/`)
+
+## Schema-Driven Architecture
+
+**V2** is generic and schema-driven:
+- No hardcoded document types - all extraction via custom JSON schemas
+- Users define schemas (following landing.ai best practices)
+- Automatic CSV export for any array data
+- Example schemas in `examples/schemas/` with comprehensive README
+
+**Custom schema usage:**
+```python
+# Load from file
+import json
+with open("examples/schemas/invoice_schema.json") as f:
+    schema = json.load(f)
+data = processor.extract_schema(result, schema)
+
+# Or define inline
+schema = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "items": {"type": "array", "items": {"type": "object"}}
+    }
+}
+data = processor.extract_schema(result, schema)
+```
+
+See `docs/SCHEMA_GUIDE.md` for detailed schema creation guide.
