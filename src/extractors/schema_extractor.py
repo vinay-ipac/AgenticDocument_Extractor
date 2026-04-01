@@ -65,6 +65,13 @@ class SchemaExtractor:
         # Build prompt
         prompt = self._build_extraction_prompt(schema, context, layout)
 
+        # Log prompt if verbose
+        logger.debug("=" * 80)
+        logger.debug("VLM EXTRACTION PROMPT:")
+        logger.debug("=" * 80)
+        logger.debug(prompt)
+        logger.debug("=" * 80)
+
         # Encode image
         image_b64 = self.region_processor.get_full_image_base64(image)
 
@@ -99,6 +106,14 @@ class SchemaExtractor:
             )
 
             result_text = response.choices[0].message.content
+
+            # Log response if verbose
+            logger.debug("=" * 80)
+            logger.debug("VLM RESPONSE:")
+            logger.debug("=" * 80)
+            logger.debug(result_text)
+            logger.debug("=" * 80)
+
             return self._parse_result(result_text, schema)
 
         except Exception as e:

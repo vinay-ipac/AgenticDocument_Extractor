@@ -184,8 +184,13 @@ def process(
     default=True,
     help="Save layout detection images (default: on)",
 )
+@click.option(
+    "--save-parsed/--no-save-parsed",
+    default=True,
+    help="Save parsed data (OCR + layout) separately (default: on)",
+)
 @click.pass_context
-def extract(ctx, document: str, schema: str, output: str, page: int, save_layout: bool):
+def extract(ctx, document: str, schema: str, output: str, page: int, save_layout: bool, save_parsed: bool):
     """
     Extract structured data from a document using a schema.
 
@@ -196,14 +201,17 @@ def extract(ctx, document: str, schema: str, output: str, page: int, save_layout
     from ..pipelines.document_processor import DocumentProcessor
     from ..extractors.schemas import get_schema
 
+    verbose = ctx.obj.get("verbose", False)
+
     click.echo(f"Extracting from: {document}")
     click.echo(f"Schema: {schema}")
     click.echo(f"Page: {page}")
+    click.echo("")
 
     try:
         # Create minimal processor
         processor = DocumentProcessor(
-            verbose=ctx.obj.get("verbose", False),
+            verbose=verbose,
         )
 
         # Determine layout output directory (sibling to output file)
@@ -212,7 +220,11 @@ def extract(ctx, document: str, schema: str, output: str, page: int, save_layout
             output_path = Path(output)
             layout_output_dir = output_path.parent / "layout_images"
 
-        # Process document first
+        # STEP 1: PARSING (OCR + Layout Detection)
+        click.echo("📄 STEP 1: PARSING DOCUMENT...")
+        click.echo("  - Running OCR (PaddleOCR)")
+        click.echo("  - Detecting layout regions")
+
         result = processor.process(
             document,
             analyze_regions=False,
@@ -223,6 +235,44 @@ def extract(ctx, document: str, schema: str, output: str, page: int, save_layout
             click.echo(f"Error: Page {page} not found (document has {result.page_count} pages)")
             sys.exit(1)
 
+        # Show parsing results
+        layout = result.layouts[page]
+        click.echo(f"  ✓ Found {len(layout.regions)} regions")
+        click.echo(f"  ✓ Detected language: {layout.language}")
+        click.echo("")
+
+        if verbose:
+            click.echo("  Detected regions:")
+            for i, region in enumerate(layout.regions[:10], 1):
+                text_preview = region.combined_text[:60] + "..." if len(region.combined_text) > 60 else region.combined_text
+                click.echo(f"    {i}. [{region.region_type.value}] {text_preview}")
+            if len(layout.regions) > 10:
+                click.echo(f"    ... and {len(layout.regions) - 10} more regions")
+            click.echo("")
+
+        # Save parsed data
+        if save_parsed:
+            output_path = Path(output)
+            parsed_path = output_path.parent / f"{output_path.stem}_parsed.json"
+            parsed_data = {
+                "document_path": result.document_path,
+                "page": page,
+                "layout": layout.to_dict(),
+                "metadata": {
+                    "total_regions": len(layout.regions),
+                    "language": layout.language,
+                    "layout_type": layout.layout_type.value,
+                }
+            }
+            with open(parsed_path, "w", encoding="utf-8") as f:
+                json.dump(parsed_data, f, indent=2, ensure_ascii=False)
+            click.echo(f"  💾 Parsed data saved to: {parsed_path}")
+            click.echo("")
+
+        # STEP 2: EXTRACTION (VLM-based schema extraction)
+        click.echo("🤖 STEP 2: SCHEMA-BASED EXTRACTION...")
+        click.echo("  - Building extraction prompt")
+
         # Resolve schema: file path or predefined name
         schema_path = Path(schema)
         if schema_path.is_file() and schema_path.suffix == ".json":
@@ -230,17 +280,22 @@ def extract(ctx, document: str, schema: str, output: str, page: int, save_layout
                 schema_dict = json.load(f)
         else:
             schema_dict = get_schema(schema)
+
+        click.echo(f"  - Using schema: {schema_dict.get('title', 'Custom Schema')}")
+        click.echo("  - Sending to VLM (GPT-4o-mini)")
+
         extraction = processor.extract_schema(result, schema_dict, page)
 
-        # Save output
+        # Save extraction output
         output_path = Path(output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(extraction, f, indent=2, ensure_ascii=False)
 
-        click.echo(f"\n[OK] Extraction complete!")
-        click.echo(f"Output saved to: {output_path}")
+        click.echo(f"  ✓ Extraction complete")
+        click.echo("")
+        click.echo(f"✅ Extracted data saved to: {output_path}")
 
         if save_layout and layout_output_dir and layout_output_dir.exists():
             layout_files = list(layout_output_dir.glob("*.png"))

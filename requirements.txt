@@ -13,6 +13,7 @@ transformers>=4.35.0
 langchain>=0.1.0
 langchain-openai>=0.0.5
 langchain-community>=0.0.10
+openai>=1.0.0
 
 # Document Processing
 PyMuPDF>=1.23.0
@@ -29,6 +30,11 @@ pandas>=2.0.0
 
 # CLI
 click>=8.1.0
+
+# Web API
+fastapi>=0.104.0
+uvicorn>=0.24.0
+python-multipart>=0.0.6
 
 # Jupyter
 ipython>=8.0.0

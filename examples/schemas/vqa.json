@@ -3,8 +3,8 @@
     "properties": {
         "question": {
             "type": "string",
-            "title": "To whom is the document sent?",
-            "description": "To whom is the document sent?"
+            "title": "When was this document sent?",
+            "description": "When was this document sent?. The Date and the Time"
         },
         "answer": {
             "type": "string",
