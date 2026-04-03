@@ -61,7 +61,7 @@ async def upload_document(file: UploadFile = File(...)):
     )
 
 
-@router.post("/{doc_id}/process")
+@router.get("/{doc_id}/process")
 async def process_document(
     doc_id: str,
     dpi: int = Query(default=150, ge=72, le=600),

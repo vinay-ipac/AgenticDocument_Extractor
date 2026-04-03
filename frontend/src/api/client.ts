@@ -130,13 +130,14 @@ export const api = {
     schemaName?: string,
     customSchema?: any
   ): Promise<ExtractionResult> {
+    const body: any = {};
+    if (schemaName) body.schema_name = schemaName;
+    if (customSchema) body.custom_schema = customSchema;
+
     return fetchJSON(`/extraction/${docId}/${page}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        schema_name: schemaName,
-        custom_schema: customSchema,
-      }),
+      body: JSON.stringify(body),
     });
   },
 

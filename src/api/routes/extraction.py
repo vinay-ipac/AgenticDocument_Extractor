@@ -3,9 +3,15 @@
 import json
 import logging
 from pathlib import Path
+import os
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
+
+from dotenv import load_dotenv
+load_dotenv()
+
+api_key = os.getenv("OPENAI_API_KEY")
 
 from ..models import (
     ExtractionRequest,
@@ -40,6 +46,8 @@ async def extract_with_schema(doc_id: str, page: int, request: ExtractionRequest
     schema = None
     schema_name = "custom"
 
+    logger.info(f"Extraction request: schema_name={request.schema_name}, custom_schema={'present' if request.custom_schema else 'none'}")
+
     if request.schema_name:
         try:
             from ...extractors.schemas import get_schema
@@ -51,7 +59,10 @@ async def extract_with_schema(doc_id: str, page: int, request: ExtractionRequest
         schema = request.custom_schema
         schema_name = request.custom_schema.get("title", "custom")
     else:
-        raise HTTPException(400, "Provide either schema_name or custom_schema")
+        raise HTTPException(
+            400,
+            f"Provide either schema_name or custom_schema. Received: schema_name={request.schema_name}, custom_schema={request.custom_schema}"
+        )
 
     # Run extraction
     try:
@@ -61,7 +72,7 @@ async def extract_with_schema(doc_id: str, page: int, request: ExtractionRequest
         from ...extractors.schema_extractor import SchemaExtractor
         from openai import OpenAI
 
-        vlm_client = OpenAI()
+        vlm_client = OpenAI(api_key=api_key)
         extractor = SchemaExtractor(vlm_client=vlm_client)
 
         layout_dict = doc.layouts[page]
